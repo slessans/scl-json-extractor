@@ -10,6 +10,12 @@ def _is_valid_leaf(val):
     return val is None or isinstance(val, (int, str, float, bool))
 
 
+class NonExistentKeyException(Exception):
+    def __init__(self, key, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.key = key
+
+
 class KeyExtractor(object):
 
     def __init__(self, key: str, strict=False, default=None):
@@ -25,7 +31,7 @@ class KeyExtractor(object):
             if isinstance(val, dict) and k in val:
                 val = val[k]
             elif self.strict:
-                raise ValueError('KeyPath "%s" does not exist in object' % (self.key,))
+                raise NonExistentKeyException(self.key)
             else:
                 return self.default
 
@@ -41,7 +47,7 @@ def _extract_from_object(extractors, obj: dict):
 
 def _main():
     parser = argparse.ArgumentParser(
-        description='Extracts arbitrarily nested keys from json array of objects or a single object.'
+        description='Extracts arbitrarily nested keys from json array of objects.'
     )
     
     parser.add_argument('input_file', type=str, help='the input json file to process')
@@ -59,7 +65,12 @@ def _main():
         in_data = json.load(in_file)
 
     assert isinstance(in_data, list)
-    out = list(_extract_from_object(extractors, d) for d in in_data)
+
+    try:
+        out = list(_extract_from_object(extractors, d) for d in in_data)
+    except NonExistentKeyException as e:
+        print("Key '%s' is missing" % (e.key,), file=sys.stderr)  # TODO more descriptive error handling (where in file?, etc)
+        return 1
 
     if args.format == 'json' or args.format == 'json-pretty':
         if args.format == 'json-pretty':
@@ -79,8 +90,11 @@ def _main():
         writer.writerows(out)
 
     else:
-        raise ValueError('output format %s is not valid' % (args.format,))
+        print('output format %s is not valid' % (args.format,), file=sys.stderr)
+        return 1
+
+    return 0
 
 
 if __name__ == '__main__':
-    _main()
+    exit(_main())
